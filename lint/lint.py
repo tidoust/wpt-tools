@@ -36,8 +36,8 @@ you could add the following line to the lint.whitelist file.
 def all_git_paths(repo_root):
     command_line = ["git", "ls-tree", "-r", "--name-only", "HEAD"]
     output = subprocess.check_output(command_line, cwd=repo_root)
-    for item in output.split("\n"):
-        yield item
+    for item in output.split(b"\n"):
+        yield item.decode('utf-8')
 
 
 def check_path_length(repo_root, path):
