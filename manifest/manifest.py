@@ -1,6 +1,7 @@
 import json
 import os
 from collections import defaultdict, OrderedDict
+from multiprocessing import Pool
 from six import iteritems
 
 from .item import item_types, ManualTest, WebdriverSpecTest, Stub, RefTest, TestharnessTest
@@ -18,6 +19,14 @@ class ManifestError(Exception):
 
 class ManifestVersionMismatch(ManifestError):
     pass
+
+def sourcefile_items(args):
+    tests_root, url_base, rel_path, status, use_committed = args
+    source_file = SourceFile(tests_root,
+                             rel_path,
+                             url_base,
+                             use_committed=use_committed)
+    return rel_path, source_file.manifest_items()
 
 class Manifest(object):
     def __init__(self, git_rev=None, url_base="/"):
@@ -132,35 +141,36 @@ class Manifest(object):
         if local_changes is None:
             local_changes = {}
 
+        pool = Pool()
+
         if committed_changes is not None:
-            for rel_path, status in committed_changes:
+            changes = ((tests_root, url_base, rel_path, status, rel_path in local_changes)
+                       for (rel_path, status) in committed_changes
+                       if status == "modified")
+
+            for rel_path, items in pool.imap_unordered(sourcefile_items,
+                                                       changes, 100):
                 self.remove_path(rel_path)
-                if status == "modified":
-                    use_committed = rel_path in local_changes
-                    source_file = SourceFile(tests_root,
-                                             rel_path,
-                                             url_base,
-                                             use_committed=use_committed)
-                    self.extend(source_file.manifest_items())
+                self.extend(items)
 
         self.local_changes = LocalChanges(self)
 
         local_paths = set()
+        changes = ((tests_root, url_base, rel_path, status, False)
+                   for (rel_path, status) in iteritems(local_changes)
+                   if status == "modified")
+
         for rel_path, status in iteritems(local_changes):
             local_paths.add(rel_path)
-
-            if status == "modified":
-                existing_items = self._committed_with_path(rel_path)
-                source_file = SourceFile(tests_root,
-                                         rel_path,
-                                         url_base,
-                                         use_committed=False)
-                local_items = set(source_file.manifest_items())
-
-                updated_items = local_items - existing_items
-                self.local_changes.extend(updated_items)
-            else:
+            if status != "modified":
                 self.local_changes.add_deleted(rel_path)
+
+        for rel_path, items in pool.imap_unordered(sourcefile_items,
+                                                   changes, 100):
+                existing_items = self._committed_with_path(rel_path)
+                updated_items = set(items) - existing_items
+                self.local_changes.extend(updated_items)
+
 
         if remove_missing_local:
             for path in self._committed_paths() - local_paths:
