@@ -1,8 +1,6 @@
 import os
 from six import BytesIO
 
-blacklist = ["/", "/tools/", "/resources/", "/common/", "/conformance-checkers/", "_certs"]
-
 def rel_path_to_url(rel_path, url_base="/"):
     assert not os.path.isabs(rel_path)
     if url_base[0] != "/":
@@ -11,20 +9,14 @@ def rel_path_to_url(rel_path, url_base="/"):
         url_base += "/"
     return url_base + rel_path.replace(os.sep, "/")
 
-def is_blacklisted(url):
-    for item in blacklist:
-        if item == "/":
-            if "/" not in url[1:]:
-                return True
-        elif url.startswith(item):
-            return True
-    return False
 
 def from_os_path(path):
     return path.replace(os.path.sep, "/")
 
+
 def to_os_path(path):
     return path.replace("/", os.path.sep)
+
 
 class ContextManagerBytesIO(BytesIO):
     def __enter__(self):
@@ -32,6 +24,7 @@ class ContextManagerBytesIO(BytesIO):
 
     def __exit__(self, *args, **kwargs):
         self.close()
+
 
 class cached_property(object):
     def __init__(self, func):
